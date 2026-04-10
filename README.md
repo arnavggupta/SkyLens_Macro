@@ -10,7 +10,7 @@
 
 SkyLens 360 is an end-to-end data platform that ingests, cleans, and analyses **5.8 million US domestic flight records from 2015**. Raw CSVs flow through a Medallion Architecture (Bronze → Silver → Gold) on AWS + Databricks, with results visualised in a Streamlit dashboard.
 
-**Catalog:** `de_workspace26` · **Schema:** `skylens_team1`
+**Catalog:** `skylens_macro` · **Schema:** `team1`
 
 ---
 
