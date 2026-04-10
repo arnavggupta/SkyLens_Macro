@@ -20,7 +20,7 @@ SkyLens 360 is an end-to-end data platform that ingests, cleans, and analyses **
 |---|---|
 | TSV780 | Aditya Rajesh Gahukar |
 | TSV859 | Aditya Sah |
-| TSV771 | Anshu |
+| TSV771 | Anshu Kashyap |
 | TSV781 | Arnav Gupta |
 | TSV848 | Shubham Kumar |
 | TSV839 | Soham Khanna |
