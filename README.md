@@ -34,13 +34,13 @@ SkyLens 360 is an end-to-end data platform that ingests, cleans, and analyses **
 ```
 12 Monthly CSVs + Reference Files
         ↓  (S3 Upload)
-🟤 Bronze  →  Raw Delta tables (bronze_flights, bronze_airlines, bronze_airports)
+Bronze  →  Raw Delta tables (bronze_flights, bronze_airlines, bronze_airports)
         ↓  (Airflow DAG 2)
-⚪ Silver  →  Cleaned, parsed, enriched (silver_flights)
+Silver  →  Cleaned, parsed, enriched (silver_flights)
         ↓  (Airflow DAG 3)
-🟡 Gold    →  Star schema (2 fact tables + 7 dimension tables)
+Gold    →  Star schema (2 fact tables + 7 dimension tables)
         ↓  (databricks-sql-connector)
-📊 Streamlit Dashboard (5 pages)
+Streamlit Dashboard (5 pages)
 ```
 
 ---
@@ -104,7 +104,7 @@ streamlit run app.py
 
 ---
 
-## 🔐 Environment Variables
+## Environment Variables
 
 Set these before running the dashboard — **never hardcode credentials**:
 
