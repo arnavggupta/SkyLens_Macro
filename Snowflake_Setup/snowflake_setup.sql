@@ -1,0 +1,267 @@
+-- ============================================================
+-- SkyLens 360 — Snowflake Setup Script
+-- ============================================================
+-- Snowflake reads Gold Parquet files from PUBLIC S3 bucket.
+-- NO Storage Integration needed (public bucket = no IAM trust).
+-- ============================================================
+
+-- STEP 1: Database, Schema, Warehouse
+USE ROLE SYSADMIN;
+
+CREATE DATABASE IF NOT EXISTS SKYLENS360;
+USE DATABASE SKYLENS360;
+
+CREATE SCHEMA IF NOT EXISTS STAGING;
+CREATE SCHEMA IF NOT EXISTS GOLD;
+
+CREATE WAREHOUSE IF NOT EXISTS SKYLENS_WH
+    WAREHOUSE_SIZE = 'X-SMALL'
+    AUTO_SUSPEND = 60
+    AUTO_RESUME = TRUE;
+
+USE WAREHOUSE SKYLENS_WH;
+
+-- ============================================================
+-- STEP 2: External Stage (PUBLIC S3 — no integration needed)
+-- ============================================================
+-- WHY no Storage Integration?
+-- Your S3 bucket has public read access. Snowflake can read
+-- public URLs directly without IAM trust or Storage Integration.
+-- This is simpler than the corporate setup.
+
+USE SCHEMA SKYLENS360.STAGING;
+
+CREATE OR REPLACE STAGE gold_s3_stage
+    URL = 's3://aws-macro-project/skylens-macro-team1/gold_parquet/'  
+    FILE_FORMAT = (TYPE = PARQUET);
+
+-- Verify: List files in the stage
+LIST @gold_s3_stage;
+
+CREATE OR REPLACE FILE FORMAT parquet_format
+TYPE = PARQUET;
+
+-- ============================================================
+-- STEP 3: Create Tables from Parquet (COPY INTO)
+-- ============================================================
+-- Since Gold is exported as Parquet (not Delta), we use
+-- regular tables with COPY INTO — not external tables with
+-- TABLE_FORMAT = DELTA.
+--
+-- WHY regular tables instead of external tables?
+-- 1. Public S3 + Parquet = COPY INTO is simpler
+-- 2. Regular tables are faster to query (data is in Snowflake)
+-- 3. External tables on public S3 without integration can be flaky
+-- ============================================================
+
+-- FACT_FLIGHTS
+CREATE OR REPLACE TABLE STAGING.FACT_FLIGHTS
+USING TEMPLATE (
+    SELECT ARRAY_AGG(OBJECT_CONSTRUCT(*))
+    FROM TABLE(INFER_SCHEMA(
+        LOCATION => '@gold_s3_stage/fact_flights/',
+        FILE_FORMAT => 'parquet_format'
+    ))
+);
+
+COPY INTO STAGING.FACT_FLIGHTS
+    FROM @gold_s3_stage/fact_flights/
+    FILE_FORMAT = (TYPE = PARQUET)
+    MATCH_BY_COLUMN_NAME = CASE_INSENSITIVE;
+
+-- FACT_DAILY_ROUTE_SUMMARY
+CREATE OR REPLACE TABLE STAGING.FACT_DAILY_ROUTE_SUMMARY
+USING TEMPLATE (
+    SELECT ARRAY_AGG(OBJECT_CONSTRUCT(*))
+    FROM TABLE(INFER_SCHEMA(
+        LOCATION => '@gold_s3_stage/fact_daily_route_summary/',
+        FILE_FORMAT => 'parquet_format'
+    ))
+);
+
+COPY INTO STAGING.FACT_DAILY_ROUTE_SUMMARY
+    FROM @gold_s3_stage/fact_daily_route_summary/
+    FILE_FORMAT = (TYPE = PARQUET)
+    MATCH_BY_COLUMN_NAME = CASE_INSENSITIVE;
+
+-- DIM_AIRLINE
+CREATE OR REPLACE TABLE STAGING.DIM_AIRLINE
+USING TEMPLATE (
+    SELECT ARRAY_AGG(OBJECT_CONSTRUCT(*))
+    FROM TABLE(INFER_SCHEMA(LOCATION => '@gold_s3_stage/dim_airline/', FILE_FORMAT => 'parquet_format'))
+);
+COPY INTO STAGING.DIM_AIRLINE FROM @gold_s3_stage/dim_airline/ FILE_FORMAT = (TYPE = PARQUET) MATCH_BY_COLUMN_NAME = CASE_INSENSITIVE;
+
+-- DIM_DATE
+CREATE OR REPLACE TABLE STAGING.DIM_DATE
+USING TEMPLATE (
+    SELECT ARRAY_AGG(OBJECT_CONSTRUCT(*))
+    FROM TABLE(INFER_SCHEMA(LOCATION => '@gold_s3_stage/dim_date/', FILE_FORMAT => 'parquet_format'))
+);
+COPY INTO STAGING.DIM_DATE FROM @gold_s3_stage/dim_date/ FILE_FORMAT = (TYPE = PARQUET) MATCH_BY_COLUMN_NAME = CASE_INSENSITIVE;
+
+-- DIM_ORIGIN_AIRPORT
+CREATE OR REPLACE TABLE STAGING.DIM_ORIGIN_AIRPORT
+USING TEMPLATE (
+    SELECT ARRAY_AGG(OBJECT_CONSTRUCT(*))
+    FROM TABLE(INFER_SCHEMA(LOCATION => '@gold_s3_stage/dim_origin_airport/', FILE_FORMAT => 'parquet_format'))
+);
+COPY INTO STAGING.DIM_ORIGIN_AIRPORT FROM @gold_s3_stage/dim_origin_airport/
+FILE_FORMAT = (TYPE = PARQUET) MATCH_BY_COLUMN_NAME = CASE_INSENSITIVE;
+
+-- DIM_DESTINATION_AIRPORT
+CREATE OR REPLACE TABLE STAGING.DIM_DESTINATION_AIRPORT
+USING TEMPLATE (
+    SELECT ARRAY_AGG(OBJECT_CONSTRUCT(*))
+    FROM TABLE(INFER_SCHEMA(LOCATION => '@gold_s3_stage/dim_destination_airport/', FILE_FORMAT => 'parquet_format'))
+);
+COPY INTO STAGING.DIM_DESTINATION_AIRPORT FROM @gold_s3_stage/dim_destination_airport/
+FILE_FORMAT = (TYPE = PARQUET) MATCH_BY_COLUMN_NAME = CASE_INSENSITIVE;
+
+-- DIM_AIRCRAFT
+CREATE OR REPLACE TABLE STAGING.DIM_AIRCRAFT
+USING TEMPLATE (
+    SELECT ARRAY_AGG(OBJECT_CONSTRUCT(*))
+    FROM TABLE(INFER_SCHEMA(LOCATION => '@gold_s3_stage/dim_aircraft/', FILE_FORMAT => 'parquet_format'))
+);
+COPY INTO STAGING.DIM_AIRCRAFT FROM @gold_s3_stage/dim_aircraft/
+FILE_FORMAT = (TYPE = PARQUET) MATCH_BY_COLUMN_NAME = CASE_INSENSITIVE;
+
+-- DIM_DELAY_TYPE
+CREATE OR REPLACE TABLE STAGING.DIM_DELAY_TYPE
+USING TEMPLATE (
+    SELECT ARRAY_AGG(OBJECT_CONSTRUCT(*))
+    FROM TABLE(INFER_SCHEMA(LOCATION => '@gold_s3_stage/dim_delay_type/', FILE_FORMAT => 'parquet_format'))
+);
+COPY INTO STAGING.DIM_DELAY_TYPE FROM @gold_s3_stage/dim_delay_type/
+FILE_FORMAT = (TYPE = PARQUET) MATCH_BY_COLUMN_NAME = CASE_INSENSITIVE;
+
+-- DIM_CANCELLATION_REASON
+CREATE OR REPLACE TABLE STAGING.DIM_CANCELLATION_REASON
+USING TEMPLATE (
+    SELECT ARRAY_AGG(OBJECT_CONSTRUCT(*))
+    FROM TABLE(INFER_SCHEMA(LOCATION => '@gold_s3_stage/dim_cancellation_reason/', FILE_FORMAT => 'parquet_format'))
+);
+COPY INTO STAGING.DIM_CANCELLATION_REASON FROM @gold_s3_stage/dim_cancellation_reason/
+FILE_FORMAT = (TYPE = PARQUET) MATCH_BY_COLUMN_NAME = CASE_INSENSITIVE;
+
+-- GOLD_AIRLINE_PERFORMANCE
+CREATE OR REPLACE TABLE STAGING.GOLD_AIRLINE_PERFORMANCE
+USING TEMPLATE (
+    SELECT ARRAY_AGG(OBJECT_CONSTRUCT(*))
+    FROM TABLE(INFER_SCHEMA(LOCATION => '@gold_s3_stage/gold_airline_performance/', FILE_FORMAT => 'parquet_format'))
+);
+COPY INTO STAGING.GOLD_AIRLINE_PERFORMANCE FROM @gold_s3_stage/gold_airline_performance/
+FILE_FORMAT = (TYPE = PARQUET) MATCH_BY_COLUMN_NAME = CASE_INSENSITIVE;
+
+-- GOLD_ROUTE_PERFORMANCE
+CREATE OR REPLACE TABLE STAGING.GOLD_ROUTE_PERFORMANCE
+USING TEMPLATE (
+    SELECT ARRAY_AGG(OBJECT_CONSTRUCT(*))
+    FROM TABLE(INFER_SCHEMA(LOCATION => '@gold_s3_stage/gold_route_performance/', FILE_FORMAT => 'parquet_format'))
+);
+COPY INTO STAGING.GOLD_ROUTE_PERFORMANCE FROM @gold_s3_stage/gold_route_performance/
+FILE_FORMAT = (TYPE = PARQUET) MATCH_BY_COLUMN_NAME = CASE_INSENSITIVE;
+
+-- GOLD_AIRPORT_TRAFFIC
+CREATE OR REPLACE TABLE STAGING.GOLD_AIRPORT_TRAFFIC
+USING TEMPLATE (
+    SELECT ARRAY_AGG(OBJECT_CONSTRUCT(*))
+    FROM TABLE(INFER_SCHEMA(LOCATION => '@gold_s3_stage/gold_airport_traffic/', FILE_FORMAT => 'parquet_format'))
+);
+COPY INTO STAGING.GOLD_AIRPORT_TRAFFIC FROM @gold_s3_stage/gold_airport_traffic/
+FILE_FORMAT = (TYPE = PARQUET) MATCH_BY_COLUMN_NAME = CASE_INSENSITIVE;
+
+-- GOLD_MONTHLY_TRENDS
+CREATE OR REPLACE TABLE STAGING.GOLD_MONTHLY_TRENDS
+USING TEMPLATE (
+    SELECT ARRAY_AGG(OBJECT_CONSTRUCT(*))
+    FROM TABLE(INFER_SCHEMA(LOCATION => '@gold_s3_stage/gold_monthly_trends/', FILE_FORMAT => 'parquet_format'))
+);
+COPY INTO STAGING.GOLD_MONTHLY_TRENDS FROM @gold_s3_stage/gold_monthly_trends/
+FILE_FORMAT = (TYPE = PARQUET) MATCH_BY_COLUMN_NAME = CASE_INSENSITIVE;
+
+-- GOLD_DELAY_CAUSE_BREAKDOWN
+CREATE OR REPLACE TABLE STAGING.GOLD_DELAY_CAUSE_BREAKDOWN
+USING TEMPLATE (
+    SELECT ARRAY_AGG(OBJECT_CONSTRUCT(*))
+    FROM TABLE(INFER_SCHEMA(LOCATION => '@gold_s3_stage/gold_delay_cause_breakdown/', FILE_FORMAT => 'parquet_format'))
+);
+COPY INTO STAGING.GOLD_DELAY_CAUSE_BREAKDOWN FROM @gold_s3_stage/gold_delay_cause_breakdown/
+FILE_FORMAT = (TYPE = PARQUET) MATCH_BY_COLUMN_NAME = CASE_INSENSITIVE;
+
+-- GOLD_CANCELLATION_SUMMARY
+CREATE OR REPLACE TABLE STAGING.GOLD_CANCELLATION_SUMMARY
+USING TEMPLATE (
+    SELECT ARRAY_AGG(OBJECT_CONSTRUCT(*))
+    FROM TABLE(INFER_SCHEMA(LOCATION => '@gold_s3_stage/gold_cancellation_summary/', FILE_FORMAT => 'parquet_format'))
+);
+COPY INTO STAGING.GOLD_CANCELLATION_SUMMARY FROM @gold_s3_stage/gold_cancellation_summary/
+FILE_FORMAT = (TYPE = PARQUET) MATCH_BY_COLUMN_NAME = CASE_INSENSITIVE;
+
+-- ============================================================
+-- STEP 4: GOLD Views (Streamlit queries these)
+-- ============================================================
+
+USE SCHEMA SKYLENS360.GOLD;
+
+CREATE OR REPLACE VIEW FACT_FLIGHTS AS SELECT * FROM STAGING.FACT_FLIGHTS;
+CREATE OR REPLACE VIEW FACT_DAILY_ROUTE_SUMMARY AS SELECT * FROM STAGING.FACT_DAILY_ROUTE_SUMMARY;
+
+CREATE OR REPLACE VIEW DIM_AIRLINE AS SELECT * FROM STAGING.DIM_AIRLINE;
+CREATE OR REPLACE VIEW DIM_DATE AS SELECT * FROM STAGING.DIM_DATE;
+
+CREATE OR REPLACE VIEW DIM_ORIGIN_AIRPORT AS SELECT * FROM STAGING.DIM_ORIGIN_AIRPORT;
+CREATE OR REPLACE VIEW DIM_DESTINATION_AIRPORT AS SELECT * FROM STAGING.DIM_DESTINATION_AIRPORT;
+CREATE OR REPLACE VIEW DIM_AIRCRAFT AS SELECT * FROM STAGING.DIM_AIRCRAFT;
+CREATE OR REPLACE VIEW DIM_DELAY_TYPE AS SELECT * FROM STAGING.DIM_DELAY_TYPE;
+CREATE OR REPLACE VIEW DIM_CANCELLATION_REASON AS SELECT * FROM STAGING.DIM_CANCELLATION_REASON;
+
+CREATE OR REPLACE VIEW GOLD_AIRLINE_PERFORMANCE AS SELECT * FROM STAGING.GOLD_AIRLINE_PERFORMANCE;
+CREATE OR REPLACE VIEW GOLD_ROUTE_PERFORMANCE AS SELECT * FROM STAGING.GOLD_ROUTE_PERFORMANCE;
+CREATE OR REPLACE VIEW GOLD_AIRPORT_TRAFFIC AS SELECT * FROM STAGING.GOLD_AIRPORT_TRAFFIC;
+CREATE OR REPLACE VIEW GOLD_MONTHLY_TRENDS AS SELECT * FROM STAGING.GOLD_MONTHLY_TRENDS;
+CREATE OR REPLACE VIEW GOLD_DELAY_CAUSE_BREAKDOWN AS SELECT * FROM STAGING.GOLD_DELAY_CAUSE_BREAKDOWN;
+CREATE OR REPLACE VIEW GOLD_CANCELLATION_SUMMARY AS SELECT * FROM STAGING.GOLD_CANCELLATION_SUMMARY;
+
+-- ============================================================
+-- STEP 5: Validation
+-- ============================================================
+
+SELECT 'FACT_FLIGHTS' AS tbl, COUNT(*) AS row_count FROM GOLD.FACT_FLIGHTS
+UNION ALL SELECT 'FACT_DAILY_ROUTE_SUMMARY', COUNT(*) FROM GOLD.FACT_DAILY_ROUTE_SUMMARY
+UNION ALL SELECT 'DIM_AIRLINE', COUNT(*) FROM GOLD.DIM_AIRLINE
+UNION ALL SELECT 'DIM_ORIGIN_AIRPORT', COUNT(*) FROM GOLD.DIM_ORIGIN_AIRPORT
+UNION ALL SELECT 'DIM_DESTINATION_AIRPORT', COUNT(*) FROM GOLD.DIM_DESTINATION_AIRPORT
+UNION ALL SELECT 'DIM_DATE', COUNT(*) FROM GOLD.DIM_DATE;
+
+-- Sample: Top 10 busiest routes
+SELECT "origin_airport_key", "dest_airport_key",
+    COUNT(*) AS flights,
+    ROUND(AVG("departure_delay_min"),1) AS avg_delay
+FROM GOLD.FACT_FLIGHTS
+GROUP BY 1, 2
+ORDER BY flights DESC
+LIMIT 10;
+
+-- Sample: SCD2 check
+SELECT * 
+FROM GOLD.DIM_AIRLINE 
+WHERE "iata_code" = 'US';
+
+-- ============================================================
+-- STEP 6: Reload After New Batch (run after each boto3 export)
+-- ============================================================
+-- After Databricks exports a new batch to S3, re-run COPY INTO
+-- to reload the data. TRUNCATE first to avoid duplicates:
+--
+-- TRUNCATE TABLE STAGING.FACT_FLIGHTS;
+-- COPY INTO STAGING.FACT_FLIGHTS FROM @gold_s3_stage/fact_flights/
+--     FILE_FORMAT = (TYPE = PARQUET) MATCH_BY_COLUMN_NAME = CASE_INSENSITIVE;
+-- (repeat for all tables)
+
+-- ============================================================
+-- CLEANUP
+-- ============================================================
+-- DROP DATABASE SKYLENS360;
+-- DROP WAREHOUSE SKYLENS_WH;
