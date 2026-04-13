@@ -5,7 +5,7 @@
 # from datetime import datetime
 
 # HOST = "https://dbc-f32115ec-3d2b.cloud.databricks.com"
-# TOKEN = "dapi330bd381ab1904bf579262bb837f35d0"
+
 
 
 # def trigger_notebook(notebook_path):
