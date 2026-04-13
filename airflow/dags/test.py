@@ -102,8 +102,8 @@ import time
 from datetime import datetime
 
 HOST = "https://dbc-f32115ec-3d2b.cloud.databricks.com"
-TOKEN = "dapi330bd381ab1904bf579262bb837f35d0"
-JOB_ID = 541194694390594 # ✅ your single job id here
+TOKEN =OS.env('DATABRICKS_TOKEN)
+JOB_ID = os.env('JOB_ID') 
 
 
 def trigger_databricks_job():
